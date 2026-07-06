@@ -26,6 +26,27 @@ Set-Content -Path ".\.claude\automation\oauth-token.secret" -Value "<토큰>" -N
 래퍼(`run-triage.ps1`/`.sh`)가 이 파일을 `CLAUDE_CODE_OAUTH_TOKEN`으로 주입합니다.
 파일이 없으면 cron.log에 `[WARN] CLAUDE_CODE_OAUTH_TOKEN not set ...`이 남습니다 — 그 경고가 이 항목입니다.
 
+## 예약 실행이 수십 분 돌다 죽음 — `Prompt is too long`
+
+```
+===== [..] (scheduled) issue-triage START =====
+Prompt is too long
+===== [..] issue-triage END (exit 1)  ← START로부터 10~30분 뒤
+```
+
+**원인:** 헤드리스 `claude -p` 세션은 대화형과 달리 **컨텍스트 자동 압축이 없습니다.**
+세션이 읽은 것(긴 이슈 코멘트 스레드 전체, 큰 로컬 로그/이력 문서 통독, 난제 이슈의
+깊은 코드 조사, 장황한 테스트 출력)이 전부 누적되고, 모델 컨텍스트 한도를 넘는 순간
+run 전체가 저 한 줄을 남기고 죽습니다. "실행은 시작됐고 한참 돌다가 exit 1"이 전형적 증상입니다
+(401처럼 즉사하지 않는 것이 구분점).
+
+**처방:** 커맨드 문서의 **§0.5 컨텍스트 예산** 규칙이 이걸 막습니다(v1.1에서 신설) —
+핵심은 ①이슈 코멘트를 `--jq` 헤더 카운트로만 확인(스레드 통째 로드 금지)
+②`log.md`는 grep으로 해당 이슈 줄만 ③코드 조사는 Grep+부분 Read
+④**딥다이브 컷**: 파일 3개 이상 열어야 하는 난제는 즉시 "판단 필요"로 넘기고 대화형에 맡김.
+아울러 `log.md`가 ~30KB를 넘으면 오래된 항목을 `log-archive.md`로 이전하세요(§0.5-7).
+구버전 템플릿을 쓰고 있다면 `template/.claude/commands/issue-triage.md`의 §0.5를 가져오면 됩니다.
+
 <a id="사내-프록시-tls"></a>
 ## `setup-token`이 SSL 오류로 실패 — `UNABLE_TO_VERIFY_LEAF_SIGNATURE`
 
